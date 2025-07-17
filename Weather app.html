@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Weather App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      /* Custom styles */
+      body {
+        font-family: "Inter", sans-serif;
+        background: linear-gradient(to right bottom, #6a82fb, #fc5c7d);
+        overflow: hidden; /* Prevent scrollbars from the canvas */
+      }
+      .weather-container {
+        background-color: rgba(255, 255, 255, 0.15);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px); /* For Safari */
+        border-radius: 1rem;
+        padding: 2.5rem;
+        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+        text-align: center;
+        max-width: 28rem; /* 448px */
+        width: 91.666667%; /* w-11/12 */
+        position: relative;
+        z-index: 10;
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem; /* 24px */
+      }
+      #weatherAnimationCanvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 0;
+      }
+      .placeholder-white::placeholder {
+        color: rgba(0, 0, 0, 0.7);
+      }
+      .sun-moon-info {
+        display: flex;
+        justify-content: space-around;
+        width: 100%;
+        margin-top: 1rem;
+      }
+    </style>
+  </head>
+  <body class="min-h-screen flex items-center justify-center text-black">
+    <div class="weather-container">
+      <h1 class="text-3xl font-bold">Weather App</h1>
+      <div class="input-group flex gap-3 justify-center">
+        <input
+          type="text"
+          id="cityInput"
+          placeholder="Enter city name..."
+          class="flex-grow p-3 rounded-xl border-none bg-white bg-opacity-20 text-black outline-none transition duration-300 focus:bg-opacity-30 placeholder-black"
+        />
+        <button
+          id="searchButton"
+          class="bg-green-500 text-white py-3 px-6 rounded-xl cursor-pointer transition duration-300 ease-in-out transform hover:bg-green-600 hover:-translate-y-0.5 shadow-md"
+        >
+          Search
+        </button>
+      </div>
+      <div
+        id="errorMessage"
+        class="text-red-300 bg-red-700 bg-opacity-30 p-3 rounded-xl mt-4 hidden"
+      ></div>
+      <div id="weatherInfo" class="weather-info mt-4">
+        <p class="text-lg">Enter a city to get weather updates!</p>
+      </div>
+    </div>
+
+    <canvas id="weatherAnimationCanvas"></canvas>
+
+    <script>
+      // --- DOM Element References ---
+      const cityInput = document.getElementById("cityInput");
+      const searchButton = document.getElementById("searchButton");
+      const errorMessageDiv = document.getElementById("errorMessage");
+      const weatherInfoDiv = document.getElementById("weatherInfo");
+      const canvas = document.getElementById("weatherAnimationCanvas");
+      const ctx = canvas.getContext("2d");
+
+      // --- State Variables ---
+      let animationType = "Clear"; // Default animation type
+      const animationState = {
+        particles: [],
+        clouds: [],
+        sun: { x: 0, y: 0, radius: 80 },
+        animationFrameId: null,
+      };
+
+      // --- Geocoding Data (Mock) ---
+      const cityCoordinates = {
+        london: { latitude: 51.5074, longitude: 0.1278 },
+        "new york": { latitude: 40.7128, longitude: -74.006 },
+        tokyo: { latitude: 35.6895, longitude: 139.6917 },
+        paris: { latitude: 48.8566, longitude: 2.3522 },
+        sydney: { latitude: -33.8688, longitude: 151.2093 },
+        dubai: { latitude: 25.276987, longitude: 55.296249 },
+        berlin: { latitude: 52.52, longitude: 13.405 },
+        cairo: { latitude: 30.0444, longitude: 31.2357 },
+        "rio de janeiro": { latitude: -22.9068, longitude: -43.1729 },
+        beijing: { latitude: 39.9042, longitude: 116.4074 },
+        karachi: { latitude: 24.8607, longitude: 67.0011 },
+        lahore: { latitude: 31.5204, longitude: 74.3587 },
+        islamabad: { latitude: 33.6844, longitude: 73.0479 },
+        faisalabad: { latitude: 31.4167, longitude: 73.0911 },
+        rawalpindi: { latitude: 33.6007, longitude: 73.0679 },
+        multan: { latitude: 30.1978, longitude: 71.4697 },
+        peshawar: { latitude: 34.015, longitude: 71.5805 },
+        quetta: { latitude: 30.1798, longitude: 66.975 },
+      };
+
+      // --- Weather Data Logic ---
+
+      const getWeatherConditionFromCode = (weatherCode) => {
+        if (weatherCode === 0) return "Clear";
+        if (weatherCode >= 1 && weatherCode <= 3) return "Clouds";
+        if (weatherCode >= 45 && weatherCode <= 48) return "Mist";
+        if (weatherCode >= 51 && weatherCode <= 57) return "Rain";
+        if (weatherCode >= 61 && weatherCode <= 67) return "Rain";
+        if (weatherCode >= 71 && weatherCode <= 77) return "Snow";
+        if (weatherCode >= 80 && weatherCode <= 82) return "Rain";
+        if (weatherCode >= 85 && weatherCode <= 86) return "Snow";
+        if (weatherCode === 95 || weatherCode === 96 || weatherCode === 99)
+          return "Thunderstorm";
+        return "Clear";
+      };
+
+      const getWeatherDescriptionFromCode = (weatherCode) => {
+        const descriptions = {
+          0: "Clear sky",
+          1: "Mainly clear",
+          2: "Partly cloudy",
+          3: "Overcast",
+          45: "Fog",
+          48: "Depositing rime fog",
+          51: "Light drizzle",
+          53: "Moderate drizzle",
+          55: "Dense drizzle",
+          56: "Light freezing drizzle",
+          57: "Dense freezing drizzle",
+          61: "Light rain",
+          63: "Moderate rain",
+          65: "Heavy rain",
+          66: "Light freezing rain",
+          67: "Heavy freezing rain",
+          71: "Light snow fall",
+          73: "Moderate snow fall",
+          75: "Heavy snow fall",
+          77: "Snow grains",
+          80: "Light rain showers",
+          81: "Moderate rain showers",
+          82: "Violent rain showers",
+          85: "Light snow showers",
+          86: "Heavy snow showers",
+          95: "Thunderstorm",
+          96: "Thunderstorm with slight hail",
+          99: "Thunderstorm with heavy hail",
+        };
+        return descriptions[weatherCode] || "Unknown weather";
+      };
+
+      const fetchWeather = async (cityName) => {
+        const normalizedCity = cityName.toLowerCase();
+        const coords = cityCoordinates[normalizedCity];
+
+        if (!coords) {
+          return {
+            success: false,
+            message: `City "${cityName}" not found.`,
+          };
+        }
+
+        const { latitude, longitude } = coords;
+        const apiUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true&daily=sunrise,sunset&timezone=auto&temperature_unit=celsius&windspeed_unit=ms`;
+
+        try {
+          const response = await fetch(apiUrl);
+          if (!response.ok) {
+            throw new Error("Failed to fetch weather data.");
+          }
+          const data = await response.json();
+
+          if (!data.current_weather || !data.daily) {
+            throw new Error("Incomplete weather data received.");
+          }
+
+          const currentWeather = data.current_weather;
+          const mainCondition = getWeatherConditionFromCode(
+            currentWeather.weathercode
+          );
+          const description = getWeatherDescriptionFromCode(
+            currentWeather.weathercode
+          );
+
+          const formattedData = {
+            name: cityName.charAt(0).toUpperCase() + cityName.slice(1),
+            main: {
+              temp: currentWeather.temperature,
+              feels_like: currentWeather.temperature,
+              humidity: "N/A",
+            },
+            weather: [{ description, main: mainCondition }],
+            wind: { speed: currentWeather.windspeed },
+            sys: {
+              sunrise: data.daily.sunrise[0],
+              sunset: data.daily.sunset[0],
+            },
+          };
+
+          return { success: true, data: formattedData };
+        } catch (error) {
+          console.error("Error fetching weather data:", error);
+          return {
+            success: false,
+            message: `Could not fetch weather for "${cityName}".`,
+          };
+        }
+      };
+
+      const getWeatherIcon = (mainCondition) => {
+        switch (mainCondition) {
+          case "Clear":
+            return "☀️";
+          case "Clouds":
+            return "☁️";
+          case "Rain":
+            return "🌧️";
+          case "Drizzle":
+            return "🌦️";
+          case "Thunderstorm":
+            return "⛈️";
+          case "Snow":
+            return "❄️";
+          case "Mist":
+          case "Fog":
+            return "🌫️";
+          default:
+            return "❓";
+        }
+      };
+
+      // --- UI Update Functions ---
+      const formatTime = (isoString) => {
+        if (!isoString) return "N/A";
+        return new Date(isoString).toLocaleTimeString("en-US", {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
+        });
+      };
+
+      const displayError = (message) => {
+        errorMessageDiv.textContent = message;
+        errorMessageDiv.classList.remove("hidden");
+        weatherInfoDiv.innerHTML =
+          '<p class="text-lg">Enter a city to get weather updates!</p>';
+      };
+
+      const clearError = () => {
+        errorMessageDiv.classList.add("hidden");
+      };
+
+      const displayWeather = (data) => {
+        weatherInfoDiv.innerHTML = `
+                <h2 class="text-4xl font-bold mb-2">${data.name}</h2>
+                <div class="weather-icon text-7xl my-4">${getWeatherIcon(
+                  data.weather[0].main
+                )}</div>
+                <p class="text-6xl font-extrabold mb-2">${Math.round(
+                  data.main.temp
+                )}°C</p>
+                <p class="text-xl capitalize mb-1">${
+                  data.weather[0].description
+                }</p>
+                <p class="text-lg">Feels like: ${
+                  data.main.feels_like !== "N/A"
+                    ? `${Math.round(data.main.feels_like)}°C`
+                    : "N/A"
+                }</p>
+                 <p class="text-lg">Wind Speed: ${data.wind.speed} m/s</p>
+                <div class="sun-moon-info">
+                    <p class="text-lg">🌅 Sunrise: ${formatTime(
+                      data.sys.sunrise
+                    )}</p>
+                    <p class="text-lg">🌇 Sunset: ${formatTime(
+                      data.sys.sunset
+                    )}</p>
+                </div>
+            `;
+      };
+
+      // --- Event Handlers ---
+      const handleSearch = async () => {
+        const city = cityInput.value.trim();
+        if (city) {
+          const result = await fetchWeather(city);
+          if (result.success) {
+            clearError();
+            displayWeather(result.data);
+            setAnimation(result.data.weather[0].main);
+          } else {
+            displayError(result.message);
+            setAnimation("Clear"); // Revert to default on error
+          }
+        } else {
+          displayError("Please enter a city name.");
+          setAnimation("Clear");
+        }
+      };
+
+      searchButton.addEventListener("click", handleSearch);
+      cityInput.addEventListener("keypress", (e) => {
+        if (e.key === "Enter") {
+          handleSearch();
+        }
+      });
+
+      // --- Canvas Animation Logic ---
+      const setAnimation = (newType) => {
+        if (animationType !== newType) {
+          animationType = newType;
+          initializeAnimationState(animationType);
+        }
+      };
+
+      const drawRain = () => {
+        ctx.strokeStyle = "rgba(174,194,224,0.8)";
+        ctx.lineWidth = 1.5;
+        ctx.lineCap = "round";
+        animationState.particles.forEach((p) => {
+          ctx.beginPath();
+          ctx.moveTo(p.x, p.y);
+          ctx.lineTo(p.x, p.y + p.length);
+          ctx.stroke();
+          p.y += p.speed;
+          if (p.y > canvas.height) {
+            p.y = -p.length;
+            p.x = Math.random() * canvas.width;
+          }
+        });
+      };
+
+      const drawSnow = () => {
+        ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
+        animationState.particles.forEach((p) => {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+          ctx.fill();
+          p.y += p.speed;
+          p.x += Math.sin(p.y * 0.01) * 0.5;
+          if (p.y > canvas.height) {
+            p.y = -p.radius;
+            p.x = Math.random() * canvas.width;
+          }
+        });
+      };
+
+      const drawClouds = () => {
+        animationState.clouds.forEach((c) => {
+          ctx.fillStyle = `rgba(255, 255, 255, ${c.opacity})`;
+          ctx.beginPath();
+          ctx.arc(c.x, c.y, c.width / 4, 0, Math.PI * 2);
+          ctx.arc(
+            c.x + c.width * 0.3,
+            c.y - c.height * 0.2,
+            c.width / 5,
+            0,
+            Math.PI * 2
+          );
+          ctx.arc(c.x + c.width * 0.6, c.y, c.width / 4, 0, Math.PI * 2);
+          ctx.arc(
+            c.x + c.width * 0.2,
+            c.y + c.height * 0.2,
+            c.width / 6,
+            0,
+            Math.PI * 2
+          );
+          ctx.arc(
+            c.x + c.width * 0.45,
+            c.y + c.height * 0.1,
+            c.width / 5,
+            0,
+            Math.PI * 2
+          );
+          ctx.fill();
+          c.x += c.speed;
+          if (c.x > canvas.width + c.width) {
+            c.x = -c.width;
+            c.y = 50 + Math.random() * (canvas.height / 3);
+          }
+        });
+      };
+
+      const drawSun = () => {
+        const sun = animationState.sun;
+        sun.x = canvas.width * 0.85; // Position to the top right
+        sun.y = canvas.height * 0.15;
+        sun.radius = Math.min(canvas.width, canvas.height) * 0.08;
+
+        ctx.fillStyle = "rgba(255, 215, 0, 0.8)";
+        ctx.beginPath();
+        ctx.arc(sun.x, sun.y, sun.radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = "rgba(255, 215, 0, 0.8)";
+        ctx.lineWidth = 3;
+        const numRays = 12;
+        for (let i = 0; i < numRays; i++) {
+          const angle =
+            ((Math.PI * 2) / numRays) * i + (Date.now() / 1000) * 0.1;
+          const startX = sun.x + (sun.radius + 5) * Math.cos(angle);
+          const startY = sun.y + (sun.radius + 5) * Math.sin(angle);
+          const endX = sun.x + (sun.radius + 20) * Math.cos(angle);
+          const endY = sun.y + (sun.radius + 20) * Math.sin(angle);
+          ctx.beginPath();
+          ctx.moveTo(startX, startY);
+          ctx.lineTo(endX, endY);
+          ctx.stroke();
+        }
+      };
+
+      const initializeAnimationState = (condition) => {
+        animationState.particles = [];
+        animationState.clouds = [];
+        if (condition === "Rain" || condition === "Thunderstorm") {
+          for (let i = 0; i < 100; i++) {
+            animationState.particles.push({
+              x: Math.random() * canvas.width,
+              y: Math.random() * canvas.height,
+              length: 10 + Math.random() * 10,
+              speed: 2 + Math.random() * 3,
+            });
+          }
+        } else if (condition === "Snow") {
+          for (let i = 0; i < 150; i++) {
+            animationState.particles.push({
+              x: Math.random() * canvas.width,
+              y: Math.random() * canvas.height,
+              radius: 1 + Math.random() * 2,
+              speed: 0.5 + Math.random() * 1.5,
+            });
+          }
+        } else if (condition === "Clouds") {
+          for (let i = 0; i < 5; i++) {
+            animationState.clouds.push({
+              x: Math.random() * canvas.width,
+              y: 50 + Math.random() * (canvas.height / 3),
+              width: 150 + Math.random() * 100,
+              height: 50 + Math.random() * 30,
+              speed: 0.2 + Math.random() * 0.5,
+              opacity: 0.7 + Math.random() * 0.3,
+            });
+          }
+        }
+      };
+
+      const animate = () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        switch (animationType) {
+          case "Rain":
+            drawRain();
+            break;
+          case "Snow":
+            drawSnow();
+            break;
+          case "Clouds":
+            drawClouds();
+            break;
+          case "Clear":
+            drawSun();
+            break;
+          case "Thunderstorm":
+            drawRain();
+            break;
+        }
+        animationState.animationFrameId = requestAnimationFrame(animate);
+      };
+
+      // --- Initial Setup ---
+      const setupCanvas = () => {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        initializeAnimationState(animationType);
+      };
+
+      window.addEventListener("resize", setupCanvas);
+
+      // --- Start the App ---
+      setupCanvas();
+      animate();
+      // Set a default city on load
+      cityInput.value = "Karachi";
+      handleSearch();
+    </script>
+  </body>
+</html>
